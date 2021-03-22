@@ -55,6 +55,7 @@ type StoredTransaction struct {
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
 	Description string          // description
+	ReplacedBy  *common.Hash
 }
 
 // Service is the service to send transactions. It takes care of gas price, gas
@@ -412,6 +413,64 @@ func (t *transactionService) ResendTransaction(txHash common.Hash) error {
 		}
 	}
 	return nil
+}
+
+func (t *transactionService) BoostTransaction(originalTxHash common.Hash, gasPrice *big.Int) error {
+	storedTransaction, err := t.StoredTransaction(originalTxHash)
+	if err != nil {
+		return err
+	}
+
+	signedTx, err := t.signer.SignTx(types.NewTransaction(
+		storedTransaction.Nonce,
+		*storedTransaction.To,
+		storedTransaction.Value,
+		storedTransaction.GasLimit,
+		gasPrice,
+		storedTransaction.Data,
+	), t.chainID)
+	if err != nil {
+		return err
+	}
+
+	err = t.backend.SendTransaction(t.ctx, signedTx)
+	if err != nil {
+		return err
+	}
+
+	txHash := signedTx.Hash()
+	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
+		To:          signedTx.To(),
+		Data:        signedTx.Data(),
+		GasPrice:    signedTx.GasPrice(),
+		GasLimit:    signedTx.Gas(),
+		Value:       signedTx.Value(),
+		Nonce:       signedTx.Nonce(),
+		Created:     time.Now().Unix(),
+		Description: fmt.Sprintf("%s (boosted)", storedTransaction.Description),
+	})
+	if err != nil {
+		return err
+	}
+
+	err = t.store.Put(pendingTransactionKey(txHash), struct{}{})
+	if err != nil {
+		return err
+	}
+
+	t.waitForPendingTx(txHash)
+
+	return t.store.Put(storedTransactionKey(originalTxHash), StoredTransaction{
+		To:          signedTx.To(),
+		Data:        signedTx.Data(),
+		GasPrice:    storedTransaction.GasPrice,
+		GasLimit:    signedTx.Gas(),
+		Value:       signedTx.Value(),
+		Nonce:       signedTx.Nonce(),
+		Created:     storedTransaction.Created,
+		Description: storedTransaction.Description,
+		ReplacedBy:  &txHash,
+	})
 }
 
 func (t *transactionService) Close() error {

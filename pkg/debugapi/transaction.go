@@ -133,3 +133,7 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 		TransactionHash: txHash,
 	})
 }
+
+func (s *Service) transactionBoostHandler(w http.ResponseWriter, r *http.Request) {
+
+}
