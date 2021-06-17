@@ -244,6 +244,7 @@ func (a *Accounting) Reserve(ctx context.Context, peer swarm.Address, price uint
 	if increasedExpectedDebt.Cmp(accountingPeer.paymentThreshold) > 0 {
 		a.logger.Errorf("reserve-block balance=%d, reserve=%d, price=%d, increasedExpectedDebt=%d", currentBalance, accountingPeer.reservedBalance, price, increasedExpectedDebt)
 		a.metrics.AccountingBlocksCount.Inc()
+		panic("overdraft")
 		return ErrOverdraft
 	}
 
